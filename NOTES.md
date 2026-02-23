@@ -50,7 +50,7 @@ Configures the VM and installs SAP HANA Express.
 
 | Task | Why |
 |------|-----|
-| Check for existing install | Skip if already installed (idempotency) |
+| Check for existing install | Skip if already installed |
 | Copy installer archives | Transfer hxe.tgz (and hxexsa.tgz if XSA) to remote |
 | Extract archives | Prepare installer files |
 | Run setup_hxe.sh | Execute SAP HANA Express installer in batch mode |
