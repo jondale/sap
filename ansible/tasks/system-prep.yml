@@ -1,0 +1,78 @@
+---
+# Additional system preparation not covered by community.sap_install roles
+# Main prep is done by sap_general_preconfigure and sap_hana_preconfigure roles
+
+- name: Install firewalld
+  ansible.builtin.dnf:
+    name: firewalld
+    state: present
+
+- name: Enable and start firewalld
+  ansible.builtin.systemd:
+    name: firewalld
+    state: started
+    enabled: true
+
+- name: Open SAP HANA ports
+  ansible.posix.firewalld:
+    port: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop:
+    # Instance 90 ports (3<instance>xx pattern)
+    - 39013/tcp  # SQL/MDX (nameserver)
+    - 39015/tcp  # SQL/MDX (indexserver)
+    - 39017/tcp  # SQL/MDX (statisticsserver)
+    - 39041/tcp  # SQL/ODBC
+    - 39042/tcp  # SQL/ODBC
+    - 8090/tcp   # HTTP (XS Classic) - 80<instance>
+    - 4390/tcp   # HTTPS (XS Classic) - 43<instance>
+    # XSA ports (3<instance>30 pattern)
+    - 39030-39033/tcp  # XSA controller/API
+    - 51000-51500/tcp  # XSA applications (dynamic ports)
+
+- name: Create HANA directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /hana/shared
+    - /hana/data
+    - /hana/log
+    - "{{ hana_installer_remote_path }}"
+
+- name: Check if swap file exists
+  ansible.builtin.stat:
+    path: /swapfile
+  register: swap_file
+
+- name: Create 32GB swap file
+  ansible.builtin.command:
+    cmd: dd if=/dev/zero of=/swapfile bs=1G count=32
+    creates: /swapfile
+  when: not swap_file.stat.exists
+
+- name: Set swap file permissions
+  ansible.builtin.file:
+    path: /swapfile
+    mode: "0600"
+
+- name: Format swap file
+  ansible.builtin.command:
+    cmd: mkswap /swapfile
+  when: not swap_file.stat.exists
+
+- name: Enable swap file
+  ansible.builtin.command:
+    cmd: swapon /swapfile
+  when: not swap_file.stat.exists
+
+- name: Add swap to fstab
+  ansible.posix.mount:
+    path: none
+    src: /swapfile
+    fstype: swap
+    opts: sw
+    state: present

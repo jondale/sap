@@ -1,0 +1,146 @@
+---
+# SAP HANA Express installation
+
+- name: Check if local installer archive exists
+  ansible.builtin.stat:
+    path: "{{ hana_installer_local_path }}/{{ hana_installer_archive }}"
+  delegate_to: localhost
+  become: false
+  register: local_installer
+
+- name: Fail if installer not found
+  ansible.builtin.fail:
+    msg: |
+      SAP HANA Express installer not found at {{ hana_installer_local_path }}/{{ hana_installer_archive }}
+
+      Please download SAP HANA Express Edition from:
+      https://www.sap.com/cmp/td/sap-hana-express-edition.html
+
+      Then place the archive in the installers/ directory.
+  when: not local_installer.stat.exists
+
+- name: Check if local XSA archive exists
+  ansible.builtin.stat:
+    path: "{{ hana_installer_local_path }}/{{ hana_xsa_archive }}"
+  delegate_to: localhost
+  become: false
+  register: local_xsa_installer
+  when: install_xsa | default(false)
+
+- name: Warn if XSA installer not found
+  ansible.builtin.debug:
+    msg: |
+      SAP HANA XSA installer not found at {{ hana_installer_local_path }}/{{ hana_xsa_archive }}
+      Server-only installation will proceed. To install XSA, download from:
+      https://www.sap.com/cmp/td/sap-hana-express-edition.html
+  when:
+    - install_xsa | default(false)
+    - not local_xsa_installer.stat.exists
+
+- name: Create remote installer directory
+  ansible.builtin.file:
+    path: "{{ hana_installer_remote_path }}"
+    state: directory
+    mode: "0755"
+
+# Using shell rsync directly to work around synchronize module's
+# issue with vault-templated ansible_host values
+- name: Copy installer to remote host
+  ansible.builtin.shell: |
+    rsync -avP --progress \
+      "{{ hana_installer_local_path }}/{{ hana_installer_archive }}" \
+      "root@{{ ansible_host }}:{{ hana_installer_remote_path }}/{{ hana_installer_archive }}"
+  delegate_to: localhost
+  become: false
+
+- name: Copy XSA installer to remote host
+  ansible.builtin.shell: |
+    rsync -avP --progress \
+      "{{ hana_installer_local_path }}/{{ hana_xsa_archive }}" \
+      "root@{{ ansible_host }}:{{ hana_installer_remote_path }}/{{ hana_xsa_archive }}"
+  delegate_to: localhost
+  become: false
+  when:
+    - install_xsa | default(false)
+    - local_xsa_installer.stat.exists | default(false)
+
+- name: Extract installer
+  ansible.builtin.unarchive:
+    src: "{{ hana_installer_remote_path }}/{{ hana_installer_archive }}"
+    dest: "{{ hana_installer_remote_path }}"
+    remote_src: true
+    creates: "{{ hana_installer_remote_path }}/setup_hxe.sh"
+
+# XSA must be extracted to same directory as hxe.tgz
+# setup_hxe.sh auto-detects XSA components when present
+- name: Extract XSA installer
+  ansible.builtin.unarchive:
+    src: "{{ hana_installer_remote_path }}/{{ hana_xsa_archive }}"
+    dest: "{{ hana_installer_remote_path }}"
+    remote_src: true
+  when:
+    - install_xsa | default(false)
+    - local_xsa_installer.stat.exists | default(false)
+
+- name: Check if HANA is already installed
+  ansible.builtin.stat:
+    path: "/usr/sap/{{ hana_sid }}/HDB{{ hana_instance_number }}/exe/sapcontrol"
+  register: hana_installed
+
+- name: Check for partial installation (directory exists but no sapcontrol)
+  ansible.builtin.stat:
+    path: "/hana/shared/{{ hana_sid }}"
+  register: hana_dir
+
+- name: Warn about partial installation
+  ansible.builtin.debug:
+    msg: "WARNING: HANA directory exists but installation incomplete. Clean up with: rm -rf /hana/shared/{{ hana_sid }} /usr/sap/{{ hana_sid }}"
+  when: hana_dir.stat.exists and not hana_installed.stat.exists
+
+# setup_hxe.sh batch mode options:
+#   -b                  : batch mode (non-interactive)
+#   --sid=XXX           : SAP HANA System ID (3 chars)
+#   -i NN               : instance number (00-99)
+#   --master_pwd=xxx    : master password for all users
+#   --hostname=xxx      : hostname (optional, auto-detected)
+#
+# XSA is auto-detected if hxexsa.tgz was extracted to the same directory
+#
+# RHEL 9 is officially supported, but still requires:
+#   HDB_INSTALLER_ALLOW_NON_SUSE=1  : Allow non-SUSE Linux
+- name: Install SAP HANA Express
+  ansible.builtin.shell: |
+    ./setup_hxe.sh -b \
+      --sid={{ hana_sid }} \
+      -i {{ hana_instance_number }} \
+      --master_pwd='{{ hana_master_password }}'
+  args:
+    chdir: "{{ hana_installer_remote_path }}"
+    creates: "/hana/shared/{{ hana_sid }}"
+  environment:
+    HDB_INSTALLER_ALLOW_NON_SUSE: "1"
+  when: not hana_installed.stat.exists
+  no_log: true
+  register: hana_install_result
+  ignore_errors: true
+
+- name: Display installation error
+  ansible.builtin.debug:
+    msg: "{{ hana_install_result.stdout_lines | default([]) }}"
+  when: hana_install_result.failed | default(false)
+
+- name: Fail if installation failed
+  ansible.builtin.fail:
+    msg: "SAP HANA installation failed. See output above."
+  when: hana_install_result.failed | default(false)
+
+- name: Verify HANA is running
+  ansible.builtin.command:
+    cmd: "/usr/sap/{{ hana_sid }}/HDB{{ hana_instance_number }}/exe/sapcontrol -nr {{ hana_instance_number }} -function GetProcessList"
+  register: hana_status
+  changed_when: false
+  failed_when: false
+
+- name: Display HANA status
+  ansible.builtin.debug:
+    var: hana_status.stdout_lines

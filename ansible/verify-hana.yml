@@ -1,0 +1,73 @@
+---
+# Standalone playbook to verify SAP HANA installation and services
+
+- name: Verify SAP HANA Installation
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Check if HANA is installed
+      ansible.builtin.stat:
+        path: "/usr/sap/{{ hana_sid }}/HDB{{ hana_instance_number }}/exe/sapcontrol"
+      register: hana_installed
+
+    - name: Fail if HANA is not installed
+      ansible.builtin.fail:
+        msg: "SAP HANA is not installed. sapcontrol not found at /usr/sap/{{ hana_sid }}/HDB{{ hana_instance_number }}/exe/sapcontrol"
+      when: not hana_installed.stat.exists
+
+    - name: Get HANA process list
+      ansible.builtin.command:
+        cmd: "/usr/sap/{{ hana_sid }}/HDB{{ hana_instance_number }}/exe/sapcontrol -nr {{ hana_instance_number }} -function GetProcessList"
+      register: hana_status
+      changed_when: false
+      failed_when: false
+
+    - name: Display HANA process status
+      ansible.builtin.debug:
+        msg: "{{ hana_status.stdout_lines }}"
+
+    - name: Check for GREEN status in processes
+      ansible.builtin.set_fact:
+        hana_healthy: "{{ 'GREEN' in hana_status.stdout }}"
+
+    - name: Get HANA system overview
+      ansible.builtin.command:
+        cmd: "/usr/sap/{{ hana_sid }}/HDB{{ hana_instance_number }}/exe/sapcontrol -nr {{ hana_instance_number }} -function GetSystemInstanceList"
+      register: hana_instances
+      changed_when: false
+      failed_when: false
+
+    - name: Display HANA instance list
+      ansible.builtin.debug:
+        msg: "{{ hana_instances.stdout_lines }}"
+
+    - name: Check HANA database connection
+      ansible.builtin.shell: |
+        su - {{ hana_sid | lower }}adm -c "hdbsql -i {{ hana_instance_number }} -u SYSTEM -p '{{ hana_master_password }}' -j \"SELECT 'HANA_OK' FROM DUMMY\""
+      register: hana_sql_check
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Display database connection status
+      ansible.builtin.debug:
+        msg: "{{ 'Database connection: OK' if 'HANA_OK' in hana_sql_check.stdout else 'Database connection: FAILED' }}"
+
+    - name: Summary
+      ansible.builtin.debug:
+        msg:
+          - "============================================"
+          - "SAP HANA Verification Summary"
+          - "============================================"
+          - "SID: {{ hana_sid }}"
+          - "Instance: {{ hana_instance_number }}"
+          - "Installation: {{ 'OK' if hana_installed.stat.exists else 'NOT FOUND' }}"
+          - "Services: {{ 'RUNNING' if hana_healthy else 'NOT RUNNING' }}"
+          - "Database: {{ 'CONNECTED' if 'HANA_OK' in hana_sql_check.stdout else 'NOT CONNECTED' }}"
+          - "============================================"
+
+    - name: Fail if services are not healthy
+      ansible.builtin.fail:
+        msg: "SAP HANA services are not running properly. Check the process list above."
+      when: not hana_healthy

@@ -1,0 +1,5 @@
+all:
+  hosts:
+    sap-hana:
+      ansible_host: "{{ vault_ansible_host }}"
+      ansible_user: root

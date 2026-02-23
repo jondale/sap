@@ -1,0 +1,22 @@
+# SAP HANA Express installation settings
+hana_sid: HXE
+
+# community.sap_install role settings
+sap_general_preconfigure_selinux_state: permissive
+sap_domain: "{{ vault_sap_domain }}"
+sap_general_preconfigure_modify_etc_hosts: true
+hana_instance_number: "90"
+hana_master_password: "{{ vault_hana_master_password }}"
+
+# Path to the downloaded SAP HANA Express installer (local)
+# Download from: https://www.sap.com/cmp/td/sap-hana-express-edition.html
+hana_installer_local_path: "{{ playbook_dir }}/../installers"
+hana_installer_archive: hxe.tgz
+hana_xsa_archive: hxexsa.tgz
+install_xsa: true
+
+# Remote installation directory
+hana_installer_remote_path: /opt/hana-installer
+
+# Installation directory
+hana_install_path: /hana/shared

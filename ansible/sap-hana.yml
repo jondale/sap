@@ -1,0 +1,56 @@
+---
+- name: Prepare system for SAP HANA
+  hosts: all
+  become: true
+
+  pre_tasks:
+    - name: Set SELinux to permissive (config)
+      ansible.builtin.lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUX='
+        line: 'SELINUX=permissive'
+
+    - name: Set SELinux to permissive (runtime)
+      ansible.builtin.command: setenforce 0
+      changed_when: true
+      failed_when: false
+
+    - name: Clean up /etc/hosts for SAP
+      ansible.builtin.copy:
+        dest: /etc/hosts
+        content: |
+          127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+          ::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+          {{ ansible_default_ipv4.address }}  {{ ansible_hostname }}.{{ sap_domain }} {{ ansible_hostname }}
+        mode: "0644"
+
+    - name: Enable SAP Solutions repository
+      community.general.rhsm_repository:
+        name: rhel-9-for-x86_64-sap-solutions-rpms
+        state: enabled
+
+    - name: Install SAP compatibility libraries
+      ansible.builtin.dnf:
+        name:
+          - compat-sap-c++-13    # Provides GLIBCXX_3.4.32 for HANA 2.00.088+
+        state: present
+
+  roles:
+    - role: community.sap_install.sap_general_preconfigure
+      tags: [prep]
+    - role: community.sap_install.sap_hana_preconfigure
+      tags: [prep]
+
+  tasks:
+    - name: Additional system preparation
+      ansible.builtin.import_tasks: tasks/system-prep.yml
+      tags: [prep]
+
+- name: Install SAP HANA Express
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Install SAP HANA Express
+      ansible.builtin.import_tasks: tasks/hana-install.yml
+      tags: [install]
