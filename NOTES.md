@@ -68,7 +68,7 @@ Configures the VM and installs SAP HANA Express.
 | `run_terraform.sh` | Provisions VM on Proxmox | Local |
 | `run_ansible.sh` | Configures VM and installs SAP HANA | Local |
 
-SAP HANA Express installers go in `installers/` directory (see [installers/INSTALLERS.md](installers/INSTALLERS.md)).
+SAP HANA Express installers go in `installers/` directory.
 
 ---
 

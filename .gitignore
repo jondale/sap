@@ -24,7 +24,7 @@ override.tf.json
 
 # SAP HANA installer files
 installers/*
-!installers/INSTALLERS.md
+!installers/.gitkeep
 
 # Ansible vault
 ansible/group_vars/vault.yml

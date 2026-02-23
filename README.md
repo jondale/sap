@@ -11,7 +11,7 @@ This project provisions a RHEL 9 VM on Proxmox and installs SAP HANA Express Edi
 - Proxmox VE cluster
 - RHEL 9 cloud-init template (see `create_proxmox_template.sh`)
 - RHEL subscription with access to SAP repositories
-- SAP HANA Express installer files (see [installers/INSTALLERS.md](installers/INSTALLERS.md))
+- SAP HANA Express installer files in `installers/` directory
 - OpenTofu/Terraform
 - Ansible with `community.sap_install` collection
 
@@ -77,7 +77,6 @@ Default login: `XSA_ADMIN` with the master password set during installation.
 ## Documentation
 
 - [NOTES.md](NOTES.md) - Detailed technical documentation
-- [installers/INSTALLERS.md](installers/INSTALLERS.md) - SAP HANA Express download instructions
 
 ## License
 
